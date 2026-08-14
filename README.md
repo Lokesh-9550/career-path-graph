@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Career Path Planner (Graph Database Application)
 
-## Getting Started
+A web application that helps students discover career paths based on their enrolled courses. It uses CognoDB (a managed graph database) to map the relationships between Students, Courses, Skills, and Job Roles, allowing for complex multi-hop queries to recommend jobs and identify skill gaps.
 
-First, run the development server:
+Why a graph database?
+In a relational database, finding the optimal career path for a student requires complex, computationally expensive JOIN operations. To find which jobs a student qualifies for, you must join Students to Enrollments, Enrollments to Courses, Courses to CourseSkills, and JobSkills to Jobs. Furthermore, finding missing skills and recommendations for courses to bridge those gaps requires recursive or nested subqueries that are notoriously awkward in SQL.
 
-```bash
+A graph database thrives here. By modeling students, courses, skills, and jobs as interconnected nodes, we can traverse the path directly using Cypher. Finding qualified jobs or skill gaps becomes a simple 2-3 hop pattern match, executing in milliseconds regardless of dataset growth.
+
+Data Model
+Data Model Diagram
+
+Nodes:
+
+Student (id, name, email)
+Course (id, title, code)
+Skill (id, name)
+JobRole (id, title, company)
+Relationships:
+
+(:Student)-[:ENROLLED_IN]->(:Course)
+(:Course)-[:TEACHES]->(:Skill)
+(:JobRole)-[:REQUIRES]->(:Skill)
+Main Queries Explained
+1. Multi-hop Traversal (Find Qualified Jobs)Finds all Job Roles a Student is qualified for based on the courses they took (3-hop traversal).
+
+MATCH (s:Student {id: $studentId})-[:ENROLLED_IN]->(c:Course)-[:TEACHES]->(sk:Skill)<-[:REQUIRES]-(j:JobRole)WITH j, collect(DISTINCT sk.name) AS matchedSkillsRETURN j.id AS jobId, j.title AS jobTitle, j.company AS company, matchedSkills
+2. Awkward for SQL (Find Skill Gaps & Recommend Courses)
+Finds the skills a student is MISSING for a specific job, and recommends courses to learn them. SQL struggles heavily with "find what is NOT connected" across multiple join tables.
+
+MATCH (s:Student {id: $studentId}), (j:JobRole {id: $jobId})
+MATCH (j)-[:REQUIRES]->(requiredSkill:Skill)
+WHERE NOT EXISTS { 
+  MATCH (s)-[:ENROLLED_IN]->(:Course)-[:TEACHES]->(requiredSkill) 
+}
+OPTIONAL MATCH (c:Course)-[:TEACHES]->(requiredSkill)
+RETURN requiredSkill.name AS missingSkill, collect(c.title) AS recommendedCourses
+
+Setup and Run Instructions
+
+1. Prerequisites
+Node.js installed
+A CognoDB Cloud instance (Free tier)
+
+2. Environment Variables
+Create a .env.local file in the root directory with your CognoDB credentials:
+
+COGNODB_URI=bolt+s://<your-instance-id>.databases.cognodb.com
+COGNODB_USER=cognodb
+COGNODB_PASSWORD=<your-password>
+
+3. Install Dependencies
+npm install
+
+4. Seed the Database
+node scripts/seed.js
+
+5. Run the Application
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit http://localhost:3000 to use the app.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Demo Links
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Hosted App: [https://career-path-graph.vercel.app]
+Screen Recording: [https://www.loom.com/share/311c171de50d4ab8a0e0cc8b9cc581c6]
